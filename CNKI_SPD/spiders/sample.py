@@ -1,35 +1,43 @@
 # -*- coding: utf-8 -*-
-import os
-import sys
-sys.path.append(os.path.abspath('..'))
-
 import scrapy
 from scrapy import Request, Spider
+import re
 from scrapy.selector import Selector, SelectorList
 import urllib
+from pymongo import MongoClient
+# todo create one mongodb pool
 from urllib.parse import urlsplit, parse_qs, urljoin, urlunparse
 from CNKI_SPD.utils import dbname_lst
+from CNKI_SPD.DBHelper import MongoDB
+import json
 
 # import scrapy_redis
 
 
 sample_headers = {
-  'Accept': ' text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-  'Accept-Encoding': ' gzip, deflate',
-  'Accept-Language': ' zh,zh-CN;q=0.9,en;q=0.8',
-  'Cache-Control': ' max-age=0',
-  'Connection': ' keep-alive'
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+    'Referer': 'http://kns.cnki.net/kcms/detail/detail.aspx?dbcode=CJFD&dbname=CJFDAUTO&filename=DHJY202004013&reftype=1',
+    'Accept-Language': 'zh,zh-CN;q=0.9,en;q=0.8',
 }
 
 
+# todo 把马晟的数据库表复制到我的数据库，机构组织等信息不需要更新，作者在插入前更新一下
+# todo 那个网格检索的接口解析掉，东西全在下面的链接，和ref差不多的方式
+# todo 分出具体的表，做笛卡尔积，然后下一步论文必须开始写。
 class SampleSpider(Spider):
     name = 'sample'
     allowed_domains = ['cnki.net']
+    base_url = 'kns.cnki.net'
+    detail_url = 'kns.cnki.net/kcms/detail/detail.aspx?dbcode={dbcode}&filename={filename}&dbname={dbname}'
     # 电化教育研究	1003-1553  -> DHJY
     start_urls = ['DHJY']
+    mongo = MongoDB()
 
     custom_settings = {
-        'DEFAULT_REQUEST_HEADERS':sample_headers
+        'DEFAULT_REQUEST_HEADERS': sample_headers
     }
 
     def start_requests(self):
@@ -37,7 +45,7 @@ class SampleSpider(Spider):
         pageIdx = 0
         for pykm in self.start_urls:
             for year in range(2020, 2021):
-                for _issue in range(4, 5):
+                for _issue in range(1, 4):
                     issue = str(_issue).rjust(2, '0')
                     # by default
                     url = f'http://navi.cnki.net/knavi/JournalDetail/GetArticleList?year={year}&issue={issue}&pykm={pykm}&pageIdx={pageIdx}&pcode={pcode}'
@@ -66,6 +74,8 @@ class SampleSpider(Spider):
             # params.update({'paper_params':response.meta['paper_params'])
             paper_req = self.get_paper_req(params)
             yield paper_req
+            # todo debug
+            continue
 
         # print(data[:200])
 
@@ -110,18 +120,18 @@ class SampleSpider(Spider):
         # DOI
         catalog_ZCDOI = wxInfo.xpath('.//p[label[@id="catalog_ZCDOI"]]/text()').get()
         # 分类号
-        catalog_ZTCLS = wxInfo.xpath(('.//p[label[@id="catalog_ZTCLS"]]/text()')).get()
+        catalog_ZTCLS = wxInfo.xpath('.//p[label[@id="catalog_ZTCLS"]]/text()').get()
         meta.update({
-            'title':title,
-            'author':author,
-            'orgn':orgn,
-            'catalog_ABSTRACT':catalog_ABSTRACT,
-            'catalog_KEYWORD':catalog_KEYWORD,
-            'catalog_ZCDOI':catalog_ZCDOI,
-            'catalog_ZTCLS':catalog_ZTCLS
+            'title': title,
+            'author': author,
+            'orgn': orgn,
+            'url': response.url,
+            'catalog_ABSTRACT': catalog_ABSTRACT,
+            'catalog_KEYWORD': catalog_KEYWORD,
+            'catalog_ZCDOI': catalog_ZCDOI,
+            'catalog_ZTCLS': catalog_ZTCLS
         })
         return self.knowledge_network(meta)
-
 
     # refer_who and who_refer
     def knowledge_network(self, meta: dict):
@@ -129,46 +139,79 @@ class SampleSpider(Spider):
         dbname = meta['dbname']
         filename = meta['filename']
 
-        # for c_db in dbname_lst:
-        #     cur_dbcode=c_db['id']
-        #     cur_dbname=c_db['dbname']
-        #
-        #     # 参考文献
-        #     ref_url = f'http://kns.cnki.net/kcms/detail/frame/asynlist.aspx?dbcode={dbcode}&dbname={dbname}&filename={filename}&curdbcode={cur_dbcode}&reftype=1'
-        #     yield Request(url=ref_url,meta=meta,callback=self.parse_kn)
-            # 相关基金文献
-
-        # todo 全网期刊
-        cur_dbcode = 'CJFQ'
-
-        # 参考文献 采用list.aspx
-        ref_url = f'http://kns.cnki.net/kcms/detail/frame/asynlist.aspx?dbcode={dbcode}&dbname={dbname}&filename={filename}&curdbcode={cur_dbcode}&reftype=1'
+        # 参考文献 采用list.aspx 不需要 curdbcode
+        ref_url = f'http://kns.cnki.net/kcms/detail/frame/list.aspx?dbcode={dbcode}&dbname={dbname}&filename={filename}&reftype=1'
         yield Request(url=ref_url, meta=meta, callback=self.parse_kn)
 
-
     # todo 检测是否需要翻页 并翻页 注意建立 id 和 url 的关联关系
-    def parse_kn(self,response):
+    def parse_kn(self, response):
+        url = response.url
+        selector = Selector(response)
+        # 以 cjfq 为例 最好用遍历的方式处理
+        cjfq_page_cnt = selector.xpath('//span[@id="pc_CJFQ"]/text()').get()
+        if cjfq_page_cnt:
+            page_num = int(re.search('\d+', cjfq_page_cnt).group())
+            #  需要翻页
+            if page_num > 10:
+                for p in range(1, page_num // 10 + 1):
+                    cjfq_next_url = f'{url}&curdbcode=CJFQ&page={p}'
+                    yield Request(url=cjfq_next_url, callback=self.parse_ref, meta=response.meta)
+            else:
+                self.parse_ref(response)
+                # self.insert_mongodb(item=response.meta.copy())
 
+    # 只解析引用文献 调用update mongodb
+    def parse_ref(self, response):
+        item = response.meta.copy()
+        selector = Selector(response)
 
+        href = '//div[@class="essayBox" and .//span[contains(@id,"{}")]]//li/a/@href'
+        data = '//div[@class="essayBox" and .//span[contains(@id,"{}")]]//li//text()'
+        cjfq_hrefs = selector.xpath(href.format('pc_CJFQ')).getall()
+        cjfq_links = [(self.base_url + href).replace('&amp;', '&') for href in cjfq_hrefs]
+        cjfq_data_lst = selector.xpath(data.format('pc_CJFQ')).getall()
+        s = cjfq_data_lst
+        cjfq_str = ''.join(s).replace('\r\n', ' ').replace(' ', '')
+        # 解析为标准的ref列表 正则含义：[数字]开头...4位数年份结尾
+        cjfq_ref = re.findall('(\[\d+?\].*?\d{4})', cjfq_str)
 
-        item=response.meta.copy()
-        selector=Selector(response)
-        raw_kn=selector.xpath('//div[@class="essayBox"]//text()').getall()
-        if len(raw_kn) and isinstance(raw_kn,list):
-            item['ref_wx']=''.join(raw_kn)
-        else:
-            item['ref_wx']=''
-        print(item['ref_wx'])
+        cbbd_hrefs = selector.xpath(href.format('pc_CBBD')).getall()
+        cbbd_links = [(self.base_url + href).replace('&amp;', '&') for href in cbbd_hrefs]
+        cbbd_data_lst = selector.xpath(data.format('pc_CBBD')).getall()
+        s = cbbd_data_lst
+        cbbd_str = ''.join(s).replace('\r\n', ' ').replace(' ', '')
+        # 解析为标准的ref列表
+        cbbd_ref = re.findall('(\[\d+?\].*?\d{4})', cbbd_str)
+
+        ssjd_hrefs = selector.xpath(href.format('pc_SSJD')).getall()
+        ssjd_links = [(self.base_url + href).replace('&amp;', '&') for href in ssjd_hrefs]
+        ssjd_data_lst = ''.join(selector.xpath(data.format('pc_SSJD')).getall())
+        s = ssjd_data_lst
+        ssjd_str = ''.join(s).replace('\r\n', ' ').replace(' ', '')
+        # 解析为标准的ref列表
+        ssjd_ref = re.findall('(\[\d+?\].*?\d{4})', ssjd_str)
+
+        crldeng_hrefs = selector.xpath(href.format('pc_CRLDENG')).getall()
+        crldeng_links = [(self.base_url + href).replace('&amp;', '&') for href in crldeng_hrefs]
+        crldeng_data_lst = ''.join(selector.xpath(data.format('pc_CRLDENG')).getall())
+        s = crldeng_data_lst
+        crldeng_str = ''.join(s).replace('\r\n', ' ').replace(' ', '')
+        # 解析为标准的ref列表
+        crldeng_ref = re.findall('(\[\d+?\].*?\d{4})', crldeng_str)
+        item.__setitem__('cjfq_ref', json.dumps(cjfq_ref))
+        item.__setitem__('cbbd_ref', json.dumps(cbbd_ref))
+        item.__setitem__('ssjd_ref', json.dumps(ssjd_ref))
+        item.__setitem__('crldeng_ref', json.dumps(crldeng_ref))
+
+        item.__setitem__('cjfq_links', json.dumps(cjfq_links))
+        item.__setitem__('cbbd_links', json.dumps(cbbd_links))
+        item.__setitem__('ssjd_links', json.dumps(ssjd_links))
+        item.__setitem__('crldeng_links', json.dumps(crldeng_links))
+
         yield item
-
-
-
-
-
 # todo 转义文字为 关联作者
 # http://kns.cnki.net/kcms/detail/frame/asynlist.aspx?dbcode=CJFD&dbname=CJFD2000&filename=dhjy200002000&curdbcode=CJFQ&reftype=601&catalogId=lcatalog_func601&catalogName=%E5%85%B3%E8%81%94%E4%BD%9C%E8%80%85%0A%20%20%20%20%20%20%20%20%20%20
 
-# todo 参考文献 page={page} http://kns.cnki.net/kcms/detail/frame/list.aspx?dbcode=CJFD&dbname=CJFDAUTO&filename=DHJY202004004&curdbcode=CJFQ&reftype=1&page=1
 # http://kns.cnki.net/kcms/detail/frame/asynlist.aspx?dbcode=CJFD&dbname=CJFDAUTO&filename=DHJY202004004&curdbcode=CJFQ&reftype=1&page=1
 
 # 关联作者  http://kns.cnki.net/kcms/detail/frame/asynlist.aspx?dbcode=CJFD&dbname=CJFD2000&filename=dhjy200002000&curdbcode=CJFQ&reftype=601
@@ -177,9 +220,6 @@ class SampleSpider(Spider):
 
 # 相关基金文献  http://kns.cnki.net/kcms/detail/frame/asynlist.aspx?dbcode=CJFD&dbname=CJFDAUTO&filename=DHJY202004004&curdbcode=CJFQ&reftype=603
 
-#  相似文献  http://kns.cnki.net/kcms/detail/frame/asynlist.aspx?dbcode=CJFD&dbname=CJFDLAST2017&filename=dhjy201708004&curdbcode=CJFQ&reftype=604
+# 相似文献  http://kns.cnki.net/kcms/detail/frame/asynlist.aspx?dbcode=CJFD&dbname=CJFDLAST2017&filename=dhjy201708004&curdbcode=CJFQ&reftype=604
 
 # 读者推荐 http://kns.cnki.net/kcms/detail/frame/asynlist.aspx?dbcode=CJFD&dbname=CJFDLAST2017&filename=dhjy201708004&curdbcode=CJFQ&reftype=605
-
-
-
