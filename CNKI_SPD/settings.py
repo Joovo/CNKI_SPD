@@ -20,10 +20,9 @@ NEWSPIDER_MODULE = 'CNKI_SPD.spiders'
 
 mongo_url = os.getenv('MONGO_URL', '127.0.0.1')
 redis_url = os.getenv('REDIS_URL', '127.0.0.1')
-mysql_host=os.getenv('MYSQL_HOST','111.231.51.183')
-mysql_user=os.getenv('MYSQL_USER','root')
-mysql_password=os.getenv('MYSQL_PASSWORD','qwer:1234')
-
+mysql_host = os.getenv('MYSQL_HOST', '111.231.51.183')
+mysql_user = os.getenv('MYSQL_USER', 'root')
+mysql_password = os.getenv('MYSQL_PASSWORD', 'qwer:1234')
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 # USER_AGENT = 'CNKI_SPD (+http://www.yourdomain.com)'
@@ -37,13 +36,15 @@ ROBOTSTXT_OBEY = False
 # Configure a delay for requests for the same website (default: 0)
 # See https://docs.scrapy.org/en/latest/topics/settings.html#download-delay
 # See also autothrottle settings and docs
-# DOWNLOAD_DELAY = 1
+# DOWNLOAD_DELAY = 3
 # The download delay setting will honor only one of:
 # CONCURRENT_REQUESTS_PER_DOMAIN = 16
 # CONCURRENT_REQUESTS_PER_IP = 16
 
 # Disable cookies (enabled by default)
 # COOKIES_ENABLED = False
+
+SCHEDULER_DISK_QUEUE = 'scrapy.squeues.MarshalFifoDiskQueue'
 
 # Disable Telnet Console (enabled by default)
 TELNETCONSOLE_ENABLED = False
@@ -75,7 +76,7 @@ TELNETCONSOLE_ENABLED = False
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-   'CNKI_SPD.pipelines.CnkiSpdPipeline': 300,
+    'CNKI_SPD.pipelines.CnkiSpdPipeline': 300,
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)
