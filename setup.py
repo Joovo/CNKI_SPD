@@ -5,5 +5,5 @@ sys.path.append(os.path.abspath('.'))
 
 if __name__ == '__main__':
     cmdline.execute(
-        'scrapy crawl sample -s CLOSESPIDER_ITEMCOUNT=100'.split()
+        'scrapy crawl sample'.split()
     )
