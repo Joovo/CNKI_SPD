@@ -7,25 +7,22 @@ import urllib
 from pymongo import MongoClient
 import copy
 from urllib.parse import urlsplit, parse_qs, urljoin, urlunparse
-from CNKI_SPD.utils import dbname_lst
 from math import ceil
 import time
+from datetime import datetime
 import json
-
-# import scrapy_redis
-
 
 sample_headers = {
     'Connection': 'keep-alive',
     'Upgrade-Insecure-Requests': '1',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-    'Referer': 'http://kns.cnki.net/kcms/detail/detail.aspx?dbcode=CJFD&filename=DHJY202002019&dbname=CJFDLAST2020',
     'Accept-Language': 'zh,zh-CN;q=0.9,en;q=0.8',
+    'Cookie': 'ecp_uid5=c4afcab5a4f37a3413d7bc82b487ddc1; Ecp_notFirstLogin=dZp7La; Ecp_ClientId=5200321033700317625; RsPerPage=20; cnkiUserKey=c9d4c04d-4693-33cf-6c42-b41ed0af43f5; UM_distinctid=17101923957470-0892dec397e987-f313f6d-144000-17101923958268; Ecp_ClientIp=112.10.216.170; Hm_lvt_6e967eb120601ea41b9d312166416aa6=1588958755; SID_kcms=124112; SID_klogin=125143; SID_kns_new=kns123118; SID_kns=123116; Ecp_session=1; ASP.NET_SessionId=qmoazbuprdrf2hahmtktmood; LID=WEEvREdxOWJmbC9oM1NjYkZCcDMwV2RyYnp5UGRINHJNMS9Xa3Q4QTRJK0I=$R1yZ0H6jyaa0en3RxVUd8df-oHi7XMMDo7mtKT6mSmEvTuk11l2gFAu0021u0021; Ecp_LoginStuts={"IsAutoLogin":false,"UserName":"nj0408","ShowName":"%E6%B5%99%E6%B1%9F%E5%B7%A5%E4%B8%9A%E5%A4%A7%E5%AD%A6%E5%9B%BE%E4%B9%A6%E9%A6%86","UserType":"bk","BUserName":"","BShowName":"","BUserType":"","r":"dZp7La"}; _pk_ref=%5B%22%22%2C%22%22%2C1591445505%2C%22http%3A%2F%2Fnavi.cnki.net%2Fknavi%2FJournalDetail%3Fpcode%3DCJFD%26pykm%3DDHJY%26Year%3D2010%26Issue%3D01%26Entry%3D%22%5D; _pk_ses=*; c_m_LinID=LinID=WEEvREdxOWJmbC9oM1NjYkZCcDMwV2RyYnp5UGRINHJNMS9Xa3Q4QTRJK0I=$R1yZ0H6jyaa0en3RxVUd8df-oHi7XMMDo7mtKT6mSmEvTuk11l2gFAu0021u0021&ot=06/06/2020 20:33:54; c_m_expire=2020-06-06 20:33:54',
+    'Cookie': 'ASP.NET_SessionId=0y1qf3cqdq1uz4q0cobnryev; SID_kcms=124114; c_m_LinID=LinID=WEEvREdxOWJmbC9oM1NjYkZCcDMwV2RyYnp5UGRINHJNMS9Xa3Q4QTRJK0I=$R1yZ0H6jyaa0en3RxVUd8df-oHi7XMMDo7mtKT6mSmEvTuk11l2gFA!!&ot=06/06/2020 20:40:18; LID=WEEvREdxOWJmbC9oM1NjYkZCcDMwV2RyYnp5UGRINHJNMS9Xa3Q4QTRJK0I=$R1yZ0H6jyaa0en3RxVUd8df-oHi7XMMDo7mtKT6mSmEvTuk11l2gFA!!; c_m_expire=2020-06-06 20:40:18; Ecp_LoginStuts={"IsAutoLogin":false,"UserName":"nj0408","ShowName":"%E6%B5%99%E6%B1%9F%E5%B7%A5%E4%B8%9A%E5%A4%A7%E5%AD%A6%E5%9B%BE%E4%B9%A6%E9%A6%86","UserType":"bk","BUserName":"","BShowName":"","BUserType":"","r":"dZp7La"}'
 }
 
 
-# todo 把马晟的数据库表复制到我的数据库，机构组织等信息不需要更新，作者在插入前更新一下
 # todo 那个网格检索的接口解析掉，东西全在下面的链接，和ref差不多的方式
 class SampleSpider(Spider):
     name = 'sample'
@@ -34,21 +31,26 @@ class SampleSpider(Spider):
     detail_url = 'kns.cnki.net/kcms/detail/detail.aspx?dbcode={dbcode}&filename={filename}&dbname={dbname}'
     # 电化教育研究	1003-1553  -> DHJY
     start_urls = ['DHJY']
-
+    pcode = 'CJFD'
+    start_year = 2010
+    end_year = 2011
+    start_issue = 4
+    end_issue = 5
     custom_settings = {
         'DEFAULT_REQUEST_HEADERS': sample_headers
     }
 
     def start_requests(self):
-        pcode = 'CJFD'
+        pcode = self.pcode
         pageIdx = 0
         for pykm in self.start_urls:
-            for year in range(2019, 2020):
-                for _issue in range(3, 4):
+            for year in range(self.start_year, self.end_year):
+                for _issue in range(self.start_issue, self.end_issue):
                     issue = str(_issue).rjust(2, '0')
                     # by default
                     url = f'http://navi.cnki.net/knavi/JournalDetail/GetArticleList?year={year}&issue={issue}&pykm={pykm}&pageIdx={pageIdx}&pcode={pcode}'
                     yield Request(
+                        headers=sample_headers,
                         url=url,
                         callback=self.get_paper_params,
                         meta={
@@ -59,7 +61,6 @@ class SampleSpider(Spider):
                     )
 
     def get_paper_params(self, response):
-        data = response.text
         meta = response.meta
         selector = Selector(response)
         redirect_pages = selector.xpath('//span[@class="name"]/a[1]/@href').getall()
@@ -91,7 +92,7 @@ class SampleSpider(Spider):
             'dbname': dbname,
             'sfield': sfield,
         })
-        return Request(url, callback=self.parse_paper, meta=params)
+        return Request(headers=sample_headers, method='GET', url=url, callback=self.parse_paper, meta=params)
 
     def parse_paper(self, response):
         selector = Selector(response)
@@ -149,24 +150,13 @@ class SampleSpider(Spider):
             'orgn': orgn,
             'orgn_id': orgn_ids,
             'url': response.url,
-            'catalog_ABSTRACT': catalog_ABSTRACT,
-            'catalog_KEYWORD': catalog_KEYWORD,
-            'catalog_FUND': catalog_FUND,
-            'catalog_FUND_id': catalog_FUND_ids,
-            'catalog_ZCDOI': catalog_ZCDOI,
-            'catalog_ZTCLS': catalog_ZTCLS
+            'catalog_ABSTRACT': catalog_ABSTRACT if catalog_ABSTRACT else '',
+            'catalog_KEYWORD': catalog_KEYWORD if catalog_KEYWORDs else '',
+            'catalog_FUND': catalog_FUND if catalog_FUND else '',
+            'catalog_FUND_id': catalog_FUND_ids if catalog_FUND_ids else '',
+            'catalog_ZCDOI': catalog_ZCDOI if catalog_ZCDOI else '',
+            'catalog_ZTCLS': catalog_ZTCLS if catalog_ZTCLS else ''
         })
-        try:
-            # item = copy.copy(meta)
-            # item.__setitem__('whichtable', 'insert_author')
-            # yield item
-            # item.__setitem__('whichtable', 'insert_orgn')
-            # yield item
-            # item.__setitem__('whichtable', 'insert_fund')
-            # yield item
-            pass
-        except:
-            pass
         yield self.knowledge_network(meta)
 
     # refer_who and who_refer
@@ -176,12 +166,26 @@ class SampleSpider(Spider):
         filename = meta['filename']
 
         # 参考文献 采用list.aspx 不需要 curdbcode
-        ref_url = f'http://kns.cnki.net/kcms/detail/frame/list.aspx?dbcode={dbcode}&dbname={dbname}&filename={filename}&reftype=1'
+        ref_url = f'http://kns.cnki.net/kcms/detail/frame/list.aspx?dbcode={dbcode}&dbname={dbname}&filename={filename.lower()}&RefType=1&vl='
         #
-        return Request(url=ref_url, meta=meta, callback=self.parse_kn)
+        headers = {
+            'Connection': 'keep-alive',
+            'Cache-Control': 'max-age=0',
+            'Upgrade-Insecure-Requests': '1',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-User': '?1',
+            'Sec-Fetch-Dest': 'document',
+            'Referer': 'https://kns.cnki.net/kcms/detail/detail.aspx?dbcode=CJFD&filename=DHJY201903004&dbname=CJFDLAST2019',
+            'Accept-Language': 'zh,zh-CN;q=0.9,en;q=0.8',
+        }
+        headers['Referer'] = meta['url']
+        return Request(method='GET', url=ref_url, headers=headers, callback=self.parse_kn, cb_kwargs={'value': meta})
 
     # todo 检测是否需要翻页 并翻页 注意建立 id 和 url 的关联关系
-    def parse_kn(self, response):
+    def parse_kn(self, response, value):
         url = response.url
         selector = Selector(response)
         # 以 cjfq 为例 最好用遍历的方式处理
@@ -192,69 +196,61 @@ class SampleSpider(Spider):
             if page_num > 10:
                 for p in range(1, ceil(page_num / 10) + 1):
                     cjfq_next_url = f'{url}&curdbcode=CJFQ&page={p}'
-                    yield Request(url=cjfq_next_url, callback=self.parse_ref, meta=response.meta)
+                    yield Request(url=cjfq_next_url, callback=self.parse_ref, cb_kwargs={'value': value})
             else:
-                yield self.parse_ref(response)
+                self.parse_ref(response, value)
+        else:
+            value['whichtable'] = 'Item'
+            self.check_item(value)
+            yield value
 
     # 只解析引用文献 调用update mongodb
-    def parse_ref(self, response):
-        item = response.meta.copy()
+    def parse_ref(self, response, value):
         selector = Selector(response)
+        refs_xpath = '//div[@class="essayBox" and .//span[contains(@id,"{}")]]//ul//li'
+        ref_ids = ['pc_CJFQ', 'pc_CBBD', 'pc_SSJD', 'pc_CRLDENG']
+        for ref_i in ref_ids:
+            for i in selector.xpath(refs_xpath.format(ref_i)):
+                href = i.xpath('./a[1]/@href').get()
+                data = i.xpath('string(.)').get()
+                query = urlsplit(href).query
+                ret = parse_qs(query)
+                # 字段可能为空
+                if ret.get('filename'):
+                    ref_filename = ret['filename'][0]
+                else:
+                    ref_filename = ''
+                if ret.get('dbcode'):
+                    ref_dbcode = ret['dbcode'][0]
+                else:
+                    ref_dbcode = ''
+                if ret.get('dbname'):
+                    ref_dbname = ret['dbname'][0]
+                else:
+                    ref_dbname = ''
+                item = {'whichtable': 'Filename', 'filename': value['filename'], 'dbcode': value['dbcode'],
+                        'dbname': value['dbname'], 'extra': value['title']}
+                self.check_item(item)
+                yield item
+                # todo skip following code to debug
+                item = {'whichtable': 'Filename', 'filename': ref_filename, 'dbcode': ref_dbcode, 'dbname': ref_dbname,
+                        'extra': data}
+                self.check_item(item)
+                yield item
+                # Ref
 
-        href = '//div[@class="essayBox" and .//span[contains(@id,"{}")]]//li/a/@href'
-        data = '//div[@class="essayBox" and .//span[contains(@id,"{}")]]//li//text()'
-        cjfq_hrefs = selector.xpath(href.format('pc_CJFQ')).getall()
-        cjfq_links = [(self.base_url + href).replace('&amp;', '&') for href in cjfq_hrefs]
-        cjfq_data_lst = selector.xpath(data.format('pc_CJFQ')).getall()
-        s = cjfq_data_lst
-        cjfq_str = ''.join(s).replace('\r\n', ' ').replace(' ', '')
-        # 解析为标准的ref列表 正则含义：[数字]开头...4位数年份结尾
-        # 外文可能会出问题？
-        cjfq_ref = re.findall('(\[\d+?\].*?\d{4})', cjfq_str)
-
-        cbbd_hrefs = selector.xpath(href.format('pc_CBBD')).getall()
-        cbbd_links = [(self.base_url + href).replace('&amp;', '&') for href in cbbd_hrefs]
-        cbbd_data_lst = selector.xpath(data.format('pc_CBBD')).getall()
-        s = cbbd_data_lst
-        cbbd_str = ''.join(s).replace('\r\n', ' ').replace(' ', '')
-        # 解析为标准的ref列表
-        cbbd_ref = re.findall('(\[\d+?\].*?\d{4})', cbbd_str)
-
-        ssjd_hrefs = selector.xpath(href.format('pc_SSJD')).getall()
-        ssjd_links = [(self.base_url + href).replace('&amp;', '&') for href in ssjd_hrefs]
-        ssjd_data_lst = ''.join(selector.xpath(data.format('pc_SSJD')).getall())
-        s = ssjd_data_lst
-        ssjd_str = ''.join(s).replace('\r\n', ' ').replace(' ', '')
-        # 解析为标准的ref列表
-        ssjd_ref = re.findall('(\[\d+?\].*?\d{4})', ssjd_str)
-
-        crldeng_hrefs = selector.xpath(href.format('pc_CRLDENG')).getall()
-        crldeng_links = [(self.base_url + href).replace('&amp;', '&') for href in crldeng_hrefs]
-        crldeng_data_lst = ''.join(selector.xpath(data.format('pc_CRLDENG')).getall())
-        s = crldeng_data_lst
-        crldeng_str = ''.join(s).replace('\r\n', ' ').replace(' ', '')
-        # 解析为标准的ref列表
-        crldeng_ref = re.findall('(\[\d+?\].*?\d{4})', crldeng_str)
-        item.__setitem__('cjfq_ref', ', '.join(cjfq_ref))
-        item.__setitem__('cbbd_ref', ', '.join(cbbd_ref))
-        item.__setitem__('ssjd_ref', ', '.join(ssjd_ref))
-        item.__setitem__('crldeng_ref', ', '.join(crldeng_ref))
-
-        item.__setitem__('cjfq_links', ', '.join(cjfq_links))
-        item.__setitem__('cbbd_links', ', '.join(cbbd_links))
-        item.__setitem__('ssjd_links', ', '.join(ssjd_links))
-        item.__setitem__('crldeng_links', ', '.join(crldeng_links))
-
-        self.check_item(item)
-
-        item.__setitem__('whichtable', 'insert_item')
-        item.__setitem__('download_ts', str(int(time.time())))
-        return item
+                item = {'whichtable': 'Ref', 'citing_filename': value['filename'], 'cited_filename': ref_filename}
+                self.check_item(item)
+                yield item
+        value['whichtable'] = 'Item'
+        self.check_item(value)
+        yield value
 
     def check_item(self, item):
         for k in item.keys():
             if isinstance(item[k], list):
-                item[k] = str(item[k]) if len(item[k]) else ''
+                item[k] = json.dumps(item[k]) if len(item[k]) else ''
+        item['download_ts'] = datetime.isoformat(datetime.now())
 # todo 转义文字为 关联作者
 # http://kns.cnki.net/kcms/detail/frame/asynlist.aspx?dbcode=CJFD&dbname=CJFD2000&filename=dhjy200002000&curdbcode=CJFQ&reftype=601&catalogId=lcatalog_func601&catalogName=%E5%85%B3%E8%81%94%E4%BD%9C%E8%80%85%0A%20%20%20%20%20%20%20%20%20%20
 
