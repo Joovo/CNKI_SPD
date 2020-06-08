@@ -18,13 +18,13 @@ BOT_NAME = 'postman'
 SPIDER_MODULES = ['CNKI_SPD.spiders']
 NEWSPIDER_MODULE = 'CNKI_SPD.spiders'
 
-mongo_url = os.getenv('MONGO_URL', '127.0.0.1')
+# mongo_url = os.getenv('MONGO_URL', '127.0.0.1')
 redis_url = os.getenv('REDIS_URL', '127.0.0.1')
-mysql_host = os.getenv('MYSQL_HOST', '127.0.0.1')
-# mysql_host = os.getenv('MYSQL_HOST', '111.231.51.183')
+# mysql_host = os.getenv('MYSQL_HOST', '127.0.0.1')
+mysql_host = os.getenv('MYSQL_HOST', '111.231.51.183')
 mysql_user = os.getenv('MYSQL_USER', 'root')
-# mysql_password = os.getenv('MYSQL_PASSWORD', 'qwer:1234')
-mysql_password = os.getenv('MYSQL_PASSWORD', 'jh123456')
+mysql_password = os.getenv('MYSQL_PASSWORD', 'qwer:1234')
+# mysql_password = os.getenv('MYSQL_PASSWORD', 'jh123456')
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 # USER_AGENT = 'CNKI_SPD (+http://www.yourdomain.com)'
@@ -67,9 +67,9 @@ TELNETCONSOLE_ENABLED = False
 
 # Enable or disable downloader middlewares
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
-# DOWNLOADER_MIDDLEWARES = {
-#    'CNKI_SPD.middlewares.CnkiSpdDownloaderMiddleware': 543,
-# }
+DOWNLOADER_MIDDLEWARES = {
+    'CNKI_SPD.middlewares.CnkiSpdDownloaderMiddleware': 543,
+}
 
 # Enable or disable extensions
 # See https://docs.scrapy.org/en/latest/topics/extensions.html
