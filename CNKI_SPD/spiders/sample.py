@@ -18,8 +18,6 @@ sample_headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
     'Accept-Language': 'zh,zh-CN;q=0.9,en;q=0.8',
-    'Cookie': 'ecp_uid5=c4afcab5a4f37a3413d7bc82b487ddc1; Ecp_notFirstLogin=dZp7La; Ecp_ClientId=5200321033700317625; RsPerPage=20; cnkiUserKey=c9d4c04d-4693-33cf-6c42-b41ed0af43f5; UM_distinctid=17101923957470-0892dec397e987-f313f6d-144000-17101923958268; Ecp_ClientIp=112.10.216.170; Hm_lvt_6e967eb120601ea41b9d312166416aa6=1588958755; SID_kcms=124112; SID_klogin=125143; SID_kns_new=kns123118; SID_kns=123116; Ecp_session=1; ASP.NET_SessionId=qmoazbuprdrf2hahmtktmood; LID=WEEvREdxOWJmbC9oM1NjYkZCcDMwV2RyYnp5UGRINHJNMS9Xa3Q4QTRJK0I=$R1yZ0H6jyaa0en3RxVUd8df-oHi7XMMDo7mtKT6mSmEvTuk11l2gFAu0021u0021; Ecp_LoginStuts={"IsAutoLogin":false,"UserName":"nj0408","ShowName":"%E6%B5%99%E6%B1%9F%E5%B7%A5%E4%B8%9A%E5%A4%A7%E5%AD%A6%E5%9B%BE%E4%B9%A6%E9%A6%86","UserType":"bk","BUserName":"","BShowName":"","BUserType":"","r":"dZp7La"}; _pk_ref=%5B%22%22%2C%22%22%2C1591445505%2C%22http%3A%2F%2Fnavi.cnki.net%2Fknavi%2FJournalDetail%3Fpcode%3DCJFD%26pykm%3DDHJY%26Year%3D2010%26Issue%3D01%26Entry%3D%22%5D; _pk_ses=*; c_m_LinID=LinID=WEEvREdxOWJmbC9oM1NjYkZCcDMwV2RyYnp5UGRINHJNMS9Xa3Q4QTRJK0I=$R1yZ0H6jyaa0en3RxVUd8df-oHi7XMMDo7mtKT6mSmEvTuk11l2gFAu0021u0021&ot=06/06/2020 20:33:54; c_m_expire=2020-06-06 20:33:54',
-    'Cookie': 'ASP.NET_SessionId=0y1qf3cqdq1uz4q0cobnryev; SID_kcms=124114; c_m_LinID=LinID=WEEvREdxOWJmbC9oM1NjYkZCcDMwV2RyYnp5UGRINHJNMS9Xa3Q4QTRJK0I=$R1yZ0H6jyaa0en3RxVUd8df-oHi7XMMDo7mtKT6mSmEvTuk11l2gFA!!&ot=06/06/2020 20:40:18; LID=WEEvREdxOWJmbC9oM1NjYkZCcDMwV2RyYnp5UGRINHJNMS9Xa3Q4QTRJK0I=$R1yZ0H6jyaa0en3RxVUd8df-oHi7XMMDo7mtKT6mSmEvTuk11l2gFA!!; c_m_expire=2020-06-06 20:40:18; Ecp_LoginStuts={"IsAutoLogin":false,"UserName":"nj0408","ShowName":"%E6%B5%99%E6%B1%9F%E5%B7%A5%E4%B8%9A%E5%A4%A7%E5%AD%A6%E5%9B%BE%E4%B9%A6%E9%A6%86","UserType":"bk","BUserName":"","BShowName":"","BUserType":"","r":"dZp7La"}'
 }
 
 
@@ -34,8 +32,8 @@ class SampleSpider(Spider):
     pcode = 'CJFD'
     start_year = 2010
     end_year = 2011
-    start_issue = 4
-    end_issue = 5
+    start_issue = 5
+    end_issue = 6
     custom_settings = {
         'DEFAULT_REQUEST_HEADERS': sample_headers
     }
@@ -97,7 +95,8 @@ class SampleSpider(Spider):
     def parse_paper(self, response):
         selector = Selector(response)
         meta = response.meta
-
+        if meta['filename'].endswith('5008'):
+            print(meta)
         # 标题
         title = selector.xpath('//h2[@class="title"]/text()').get()
         author_lst = selector.xpath('//div[@class="author"]//text()').getall()
@@ -157,7 +156,7 @@ class SampleSpider(Spider):
             'catalog_ZCDOI': catalog_ZCDOI if catalog_ZCDOI else '',
             'catalog_ZTCLS': catalog_ZTCLS if catalog_ZTCLS else ''
         })
-        yield self.knowledge_network(meta)
+        return self.knowledge_network(meta)
 
     # refer_who and who_refer
     def knowledge_network(self, meta: dict):
@@ -182,9 +181,12 @@ class SampleSpider(Spider):
             'Accept-Language': 'zh,zh-CN;q=0.9,en;q=0.8',
         }
         headers['Referer'] = meta['url']
+        item = meta.copy()
+        item['whichtable'] = 'Item'
+        self.check_item(item)
+        yield item
         return Request(method='GET', url=ref_url, headers=headers, callback=self.parse_kn, cb_kwargs={'value': meta})
 
-    # todo 检测是否需要翻页 并翻页 注意建立 id 和 url 的关联关系
     def parse_kn(self, response, value):
         url = response.url
         selector = Selector(response)
@@ -204,7 +206,7 @@ class SampleSpider(Spider):
             self.check_item(value)
             yield value
 
-    # 只解析引用文献 调用update mongodb
+    # 只解析引用文献
     def parse_ref(self, response, value):
         selector = Selector(response)
         refs_xpath = '//div[@class="essayBox" and .//span[contains(@id,"{}")]]//ul//li'

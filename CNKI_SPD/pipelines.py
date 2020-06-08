@@ -28,15 +28,12 @@ class CnkiSpdPipeline(object):
             del item['depth']
             del item['download_slot']
             del item['download_latency']
-            del item['download_timeout']
 
             # useless
             del item['sfield']
             # duplicated
             del item['dbCode']
             del item['tableName']
-            del item['redirect_urls']
-            del item['redirect_reasons']
         except:
             pass
         # 建数据库
@@ -82,7 +79,6 @@ class CnkiSpdPipeline(object):
                                (item['filename'], item['dbcode'], item['dbname'], item['extra'], item['download_ts']))
                 conn.commit()
 
-
     def insert_ref(self, item) -> dict:
         with create_conn() as conn:
             with conn.cursor() as cursor:
@@ -119,8 +115,6 @@ class CnkiSpdPipeline(object):
                     citing_id, item['citing_filename'], cited_id, item['cited_filename'], item['download_ts']))
                 conn.commit()
 
-
-
     def insert_author(self, item) -> dict:
         with create_conn() as conn:
             with conn.cursor() as cursor:
@@ -142,12 +136,11 @@ class CnkiSpdPipeline(object):
                         select_author_sql = """select * from `Author` where `author`=%s"""
                         if not cursor.execute(select_author_sql, au[i]):
                             insert_author_sql = """insert into `Author` (`author`,`author_id`,`download_ts`) values (%s,%s,%s)"""
-                            cursor.execute(insert_author_sql, (au[i], au_id[i],item['download_ts']))
+                            cursor.execute(insert_author_sql, (au[i], au_id[i], item['download_ts']))
                             conn.commit()
                 except Exception as e:
                     conn.rollback()
                     conn.commit()
-
 
     def insert_orgn(self, item) -> dict:
         with create_conn() as conn:
@@ -169,12 +162,15 @@ class CnkiSpdPipeline(object):
                         select_orgn_sql = """select * from `Orgn` where `orgn`=%s"""
                         if not cursor.execute(select_orgn_sql, og[i]):
                             insert_orgn_sql = """insert into `Orgn` (`orgn`,`orgn_id`,`download_ts`) values (%s,%s,%s)"""
-                            cursor.execute(insert_orgn_sql, (og[i], og_id[i],item['download_ts']))
+                            # list index out of range
+                            if i >= len(og_id):
+                                cursor.execute(insert_orgn_sql, (og[i], '', item['download_ts']))
+                            else:
+                                cursor.execute(insert_orgn_sql, (og[i], og_id[i], item['download_ts']))
                             conn.commit()
                 except Exception as e:
                     conn.rollback()
                     conn.commit()
-
 
     def insert_fund(self, item) -> dict:
         with create_conn() as conn:
@@ -197,12 +193,11 @@ class CnkiSpdPipeline(object):
                         select_fund_sql = """select * from `Fund` where `fund`=%s"""
                         if not cursor.execute(select_fund_sql, fd[i]):
                             insert_fund_sql = """insert into `Fund` (`fund`,`fund_id`,`download_ts`) values (%s,%s,%s)"""
-                            cursor.execute(insert_fund_sql, (fd[i], fd_id[i],item['download_ts']))
+                            cursor.execute(insert_fund_sql, (fd[i], fd_id[i], item['download_ts']))
                             conn.commit()
                 except Exception as e:
                     conn.rollback()
                     conn.commit()
-
 
     def insert_item(self, item):
         with create_conn() as conn:
@@ -251,7 +246,7 @@ class CnkiSpdPipeline(object):
                             item['author_id'],
                             item['orgn'], item['orgn_id'], item['url'], item['catalog_ABSTRACT'],
                             item['catalog_KEYWORD'],
-                            item['catalog_ZCDOI'], item['catalog_FUND'], item['catalog_FUND_id'], item['catalog_ZTCLS'],
+                            item['catalog_ZCDOI'], item['catalog_FUND'], item['catalog_FUND_id'], item['catalog_ZTCLS']
                         ))
                         conn.commit()
                 except Exception as e:

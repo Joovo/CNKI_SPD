@@ -20,9 +20,11 @@ NEWSPIDER_MODULE = 'CNKI_SPD.spiders'
 
 mongo_url = os.getenv('MONGO_URL', '127.0.0.1')
 redis_url = os.getenv('REDIS_URL', '127.0.0.1')
-mysql_host = os.getenv('MYSQL_HOST', '111.231.51.183')
+mysql_host = os.getenv('MYSQL_HOST', '127.0.0.1')
+# mysql_host = os.getenv('MYSQL_HOST', '111.231.51.183')
 mysql_user = os.getenv('MYSQL_USER', 'root')
-mysql_password = os.getenv('MYSQL_PASSWORD', 'qwer:1234')
+# mysql_password = os.getenv('MYSQL_PASSWORD', 'qwer:1234')
+mysql_password = os.getenv('MYSQL_PASSWORD', 'jh123456')
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 # USER_AGENT = 'CNKI_SPD (+http://www.yourdomain.com)'
@@ -30,13 +32,15 @@ mysql_password = os.getenv('MYSQL_PASSWORD', 'qwer:1234')
 # Obey robots.txt rules
 ROBOTSTXT_OBEY = False
 
+REDIRECT_MAX_TIMES = 25
+
 # Configure maximum concurrent requests performed by Scrapy (default: 16)
-# CONCURRENT_REQUESTS = 32
+CONCURRENT_REQUESTS = 1
 
 # Configure a delay for requests for the same website (default: 0)
 # See https://docs.scrapy.org/en/latest/topics/settings.html#download-delay
 # See also autothrottle settings and docs
-DOWNLOAD_DELAY = 1
+# DOWNLOAD_DELAY = 1
 # The download delay setting will honor only one of:
 # CONCURRENT_REQUESTS_PER_DOMAIN = 16
 # CONCURRENT_REQUESTS_PER_IP = 16
@@ -96,7 +100,7 @@ ITEM_PIPELINES = {
 
 # Enable and configure HTTP caching (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html#httpcache-middleware-settings
-HTTPCACHE_ENABLED = True
+# HTTPCACHE_ENABLED = True
 # HTTPCACHE_EXPIRATION_SECS = 0
 # HTTPCACHE_DIR = 'httpcache'
 # HTTPCACHE_IGNORE_HTTP_CODES = []
