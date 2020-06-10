@@ -2,7 +2,7 @@ from pymongo.mongo_client import MongoClient
 
 from .settings import mongo_url
 
-
+# departed module for using MongoDB as database
 class MongoDB:
 
     def __init__(self):

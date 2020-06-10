@@ -1,3 +1,6 @@
+from hashlib import md5
+import time
+
 dbname_lst = [
     {
         'dbname': '中国学术期刊网络出版总库', 'id': "CJFQ"
@@ -18,3 +21,10 @@ dbname_lst = [
         'dbname': '外文题录数据库', 'id': "CRLDENG"
     },
 ]
+
+
+def get_md5():
+    m = md5()
+    time_str = str(int(time.time_ns()))
+    m.update(time_str.encode())
+    return m.hexdigest()

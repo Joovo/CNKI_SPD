@@ -6,6 +6,7 @@ from scrapy.selector import Selector, SelectorList
 import urllib
 from pymongo import MongoClient
 import copy
+from CNKI_SPD.utils import get_md5
 from urllib.parse import urlsplit, parse_qs, urljoin, urlunparse
 from math import ceil
 import time
@@ -87,19 +88,30 @@ class SampleSpider(Spider):
         })
         return Request(headers=sample_headers, method='GET', url=url, callback=self.parse_paper, meta=params)
 
-    def parse_paper(self, response):
+    def parse_paper(self, response, whichtable='', Item_filename=''):
         selector = Selector(response)
         meta = response.meta
-        if meta['filename'].endswith('5008'):
-            print(meta)
+        navi_link_issue = selector.xpath('//div[@class="sourinfo"]/p[3]/a/@onclick').get()
+        try:
+            if navi_link_issue:
+                pcode = navi_link_issue.split(',')[1].strip('\'')
+                pykm = navi_link_issue.split(',')[3].strip('\'')
+                year = navi_link_issue.split(',')[4].strip('\'')
+                issue = navi_link_issue.split(',')[5].strip('\'')
+        except:
+            pcode = pykm = year = issue = ''
+        issue = issue.rstrip('\')')
+        ISSN = selector.xpath('//div[@class="sourinfo"]/p[4]/text()').get()
+        if ISSN:
+            ISSN = ISSN.replace('ISSN', '').lstrip('\r\n:： ')
+        else:
+            ISSN = ''
         # 标题
         title = selector.xpath('//h2[@class="title"]/text()').get()
-        author_lst = selector.xpath('//div[@class="author"]//text()').getall()
         # 作者
-
+        author_lst = selector.xpath('//div[@class="author"]//text()').getall()
         author_TurnPageToKnets = selector.xpath('//div[@class="author"]//span/a/@onclick').getall()
         author_ids = []
-
         for i in author_TurnPageToKnets:
             TurnPageToKnet = re.findall('\'(\d+?)\'', i)
             if TurnPageToKnet:
@@ -111,7 +123,7 @@ class SampleSpider(Spider):
                     if i in j:
                         break
                 else:
-                    author_ids.insert(index, 'NULL')
+                    author_ids.insert(index, get_md5())
         author = ' '.join(author_lst)
         author_ids = ' '.join(author_ids)
         orgn_lst = selector.xpath('//div[@class="orgn"]//text()').getall()
@@ -145,11 +157,16 @@ class SampleSpider(Spider):
             if F_id:
                 FUND_ids.append(F_id.group(1))
             else:
-                FUND_ids.append('NULL')
+                FUND_ids.append(get_md5())
         catalog_FUND_ids = ' '.join(FUND_ids)
         # 分类号
         catalog_ZTCLS = wxInfo.xpath('.//p[label[@id="catalog_ZTCLS"]]/text()').get()
         meta.update({
+            'pcode': pcode,
+            'pykm': pykm,
+            'year': year,
+            'issue': issue,
+            'ISSN': ISSN,
             'title': title,
             'author': author,
             'author_id': author_ids,
@@ -165,103 +182,137 @@ class SampleSpider(Spider):
         })
         # 保存Item详细信息
         item = meta.copy()
-        item['whichtable'] = 'Item'
-        self.check_item(item)
-        yield item
-        yield self.knowledge_network(meta)
+        if whichtable:
+            item['whichtable'] = whichtable
+            query = urlsplit(response.url).query
+            filename = parse_qs(query)['filename'][0]
+            dbname = parse_qs(query)['dbname'][0]
+            dbcode = parse_qs(query)['dbcode'][0]
+            item['filename'] = filename
+            item['dbname'] = dbname
+            item['dbcode'] = dbcode
+            self.check_item(item)
+            yield item
+            rel_item = {'Ref_Info_filename': filename}
+            rel_item['whichtable'] = 'Ref_Rel'
+            rel_item['Item_filename'] = Item_filename
+            self.check_item(rel_item)
+            yield rel_item
+        else:
+            item['whichtable'] = 'Item'
+            self.check_item(item)
+            yield item
+            yield self.knowledge_network(meta)
 
-    # refer_who and who_refer
-    def knowledge_network(self, meta: dict):
-        dbcode = meta['dbcode']
-        dbname = meta['dbname']
-        filename = meta['filename']
 
-        # 参考文献 采用list.aspx 不需要 curdbcode
-        ref_url = f'http://kns.cnki.net/kcms/detail/frame/list.aspx?dbcode={dbcode}&dbname={dbname}&filename={filename.lower()}&RefType=1&vl='
-        #
-        headers = {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Accept-Language': 'zh,zh-CN;q=0.9,en;q=0.8',
-            'Cache-Control': 'max-age=0',
-            'Connection': 'keep-alive',
-            'Host': 'kns.cnki.net',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36',
-            'Upgrade-Insecure-Requests': '1',
-            'Referer': 'https://kns.cnki.net/kcms/detail/detail.aspx?dbcode=CJFD&filename=DHJY201005002&dbname=CJFD2010',
-        }
-        headers['Referer'] = meta['url']
+# refer_who and who_refer
+def knowledge_network(self, meta: dict):
+    dbcode = meta['dbcode']
+    dbname = meta['dbname']
+    filename = meta['filename']
 
-        return Request(url=ref_url, headers=headers, callback=self.parse_kn, cb_kwargs={'value': meta})
+    # 参考文献 采用list.aspx 不需要 curdbcode
+    ref_url = f'http://kns.cnki.net/kcms/detail/frame/list.aspx?dbcode={dbcode}&dbname={dbname}&filename={filename.lower()}&RefType=1&vl='
+    #
+    headers = {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'zh,zh-CN;q=0.9,en;q=0.8',
+        'Cache-Control': 'max-age=0',
+        'Connection': 'keep-alive',
+        'Host': 'kns.cnki.net',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://kns.cnki.net/kcms/detail/detail.aspx?dbcode=CJFD&filename=DHJY201005002&dbname=CJFD2010',
+    }
+    headers['Referer'] = meta['url']
 
-    def parse_kn(self, response, value):
-        url = response.url
-        selector = Selector(response)
-        # 以 cjfq 为例 最好用遍历的方式处理
-        ref_ids = ['pc_CJFQ', 'pc_CBBD', 'pc_SSJD', 'pc_CRLDENG']
-        for ref_i in ref_ids:
-            value['ref_type'] = ref_i
-            page_cnt = selector.xpath(f'//span[@id="{ref_i}"]/text()').get()
-            if page_cnt:
-                page_num = int(re.search('\d+', page_cnt).group())
-                #  需要翻页
-                if page_num <= 10:
-                    for _item in self.parse_ref(response, value):
-                        yield _item
+    return Request(url=ref_url, headers=headers, callback=self.parse_kn, cb_kwargs={'value': meta})
+
+
+def parse_kn(self, response, value):
+    url = response.url
+    selector = Selector(response)
+    # 以 cjfq 为例 最好用遍历的方式处理
+    ref_ids = ['pc_CJFQ', 'pc_CBBD', 'pc_SSJD']
+    # ref_ids = ['pc_CJFQ', 'pc_CBBD', 'pc_SSJD', 'pc_CRLDENG']
+    for ref_i in ref_ids:
+        value['ref_type'] = ref_i
+        page_cnt = selector.xpath(f'//span[@id="{ref_i}"]/text()').get()
+        if page_cnt:
+            page_num = int(re.search('\d+', page_cnt).group())
+            #  需要翻页
+            if page_num <= 10:
+                for _item in self.parse_ref(response, value):
+                    yield _item
+            else:
+                if page_num % 10:
+                    max_page = ceil(page_num / 10)
                 else:
-                    if page_num % 10:
-                        max_page = ceil(page_num / 10)
-                    else:
-                        max_page = page_num // 10
-                        for p in range(1, max_page + 1):
-                            next_url = f'{url}&curdbcode=CJFQ&page={p}'
-                            yield Request(url=next_url, callback=self.parse_ref, cb_kwargs={'value': value})
+                    max_page = page_num // 10
+                    for p in range(1, max_page + 1):
+                        next_url = f'{url}&curdbcode=CJFQ&page={p}'
+                        yield Request(url=next_url, callback=self.parse_ref, cb_kwargs={'value': value})
 
-    # 只解析引用文献
-    def parse_ref(self, response, value):
-        selector = Selector(response)
-        refs_xpath = '//div[@class="essayBox" and .//span[contains(@id,"{}")]]//ul//li'
-        ref_i = value.get('ref_i', '')
-        for i in selector.xpath(refs_xpath.format(ref_i)):
-            href = i.xpath('./a[1]/@href').get()
-            data = i.xpath('string(.)').get()
-            if data:
-                data = re.sub('\[\d+?\]', '', data)
-            query = urlsplit(href).query
-            ret = parse_qs(query)
-            # 字段可能为空
-            if ret.get('filename'):
-                ref_filename = ret['filename'][0]
-            else:
-                ref_filename = ''
-            if ret.get('dbcode'):
-                ref_dbcode = ret['dbcode'][0]
-            else:
-                ref_dbcode = ''
-            if ret.get('dbname'):
-                ref_dbname = ret['dbname'][0]
-            else:
-                ref_dbname = ''
-            item = {'whichtable': 'Filename', 'filename': value['filename'], 'dbcode': value['dbcode'],
-                    'dbname': value['dbname'], 'extra': value['title']}
+
+# 只解析引用文献
+def parse_ref(self, response, value):
+    selector = Selector(response)
+    refs_xpath = '//div[@class="essayBox" and .//span[contains(@id,"{}")]]//ul//li'
+    ref_i = value.get('ref_i', '')
+    for i in selector.xpath(refs_xpath.format(ref_i)):
+        href = i.xpath('./a[1]/@href').get()
+        data = i.xpath('string(.)').get()
+        if data:
+            data = re.sub('\[\d+?\]', '', data)
+        if href:
+            # 有新链接，处理Ref_Info 同时记录Ref_
+            next_url = 'http://' + self.base_url + href
+            yield Request(headers=sample_headers, url=next_url, callback=self.parse_paper,
+                          cb_kwargs={'whichtable': 'Ref_Info', 'Item_filename': value['filename']})
+        elif data:
+            # 没有链接，只有文本，把文本切分成基本信息载入Ref_Info
+            item = {'filename': get_md5()}
+            self.split_reference(item, data)
+            item['whichtable'] = 'Ref_Info'
+            item['easy_insert'] = 'yes'
             self.check_item(item)
             yield item
-            # todo skip following code to debug
-            item = {'whichtable': 'Filename', 'filename': ref_filename, 'dbcode': ref_dbcode, 'dbname': ref_dbname,
-                    'extra': data}
-            self.check_item(item)
-            yield item
-            # Ref
+            # 同时记录 Ref_Rel
+            rel_item = {'Ref_Info_filename': get_md5()}
+            rel_item['Item_filename'] = value['filename']
+            rel_item['whichtable'] = 'Ref_Rel'
+            self.check_item(rel_item)
+            yield rel_item
 
-            item = {'whichtable': 'Ref', 'citing_filename': value['filename'], 'cited_filename': ref_filename}
-            self.check_item(item)
-            yield item
 
-    def check_item(self, item):
-        for k in item.keys():
-            if isinstance(item[k], list):
-                item[k] = json.dumps(item[k]) if len(item[k]) else ''
-        item['download_ts'] = datetime.isoformat(datetime.now())
+def check_item(self, item):
+    for k in item.keys():
+        if isinstance(item[k], list):
+            item[k] = json.dumps(item[k]) if len(item[k]) else ''
+        elif isinstance(item[k], str):
+            item[k] = item[k].strip('\r\n ')
+    item['download_ts'] = datetime.isoformat(datetime.now())
+
+
+def split_reference(self, item, data):
+    data = data.replace('\r\n', ' ').replace('&nbsp&nbsp', ' ').replace(',', '.')
+    data_lst = data.split('.')
+    title = data_lst[0]
+    author = data_lst[1]
+    author_id = get_md5()
+    orgn = data_lst[2]
+    orgn_id = get_md5()
+    year = data_lst[-1]
+    item['title'] = title
+    item['author'] = author
+    item['author_id'] = author_id
+    item['orgn'] = orgn
+    item['orgn_id'] = orgn_id
+    item['fund'] = ''
+    item['fund_id'] = ''
+    item['year'] = year
+
 # todo 转义文字为 关联作者
 # http://kns.cnki.net/kcms/detail/frame/asynlist.aspx?dbcode=CJFD&dbname=CJFD2000&filename=dhjy200002000&curdbcode=CJFQ&reftype=601&catalogId=lcatalog_func601&catalogName=%E5%85%B3%E8%81%94%E4%BD%9C%E8%80%85%0A%20%20%20%20%20%20%20%20%20%20
 

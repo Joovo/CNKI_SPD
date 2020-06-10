@@ -7,6 +7,7 @@
 import pymysql
 from . import settings
 import threading
+from .utils import get_md5
 from contextlib import contextmanager
 
 
@@ -28,7 +29,6 @@ class CnkiSpdPipeline(object):
             del item['depth']
             del item['download_slot']
             del item['download_latency']
-
             # useless
             del item['sfield']
             # duplicated
@@ -44,77 +44,48 @@ class CnkiSpdPipeline(object):
                     cursor.execute('create database JH_CNKI;')
                 cursor.execute('use JH_CNKI;')
                 conn.commit()
-
-        if item['whichtable'] == 'Filename':
-            return self.insert_filename(item)
-        elif item['whichtable'] == 'Ref':
-            return self.insert_ref(item)
-        elif item['whichtable'] == 'Item':
+        # todo item->ref_info,citing_info,item priority equal to item
+        # todo Ref->ref_rel,citing_rel
+        if item['whichtable'] in ('Item', 'Ref_Info', 'Citing_Info'):
             self.insert_author(item)
             self.insert_orgn(item)
             self.insert_fund(item)
             return self.insert_item(item)
+        elif item['whichtable'] == 'Ref_Rel':
+            return self.insert_ref_rel(item)
+        elif item['whichtable'] == 'Citing_Rel':
+            return self.insert_citing_rel(item)
 
-    def insert_filename(self, item) -> dict:
+    def insert_citing_rel(self, item):
+        pass
+
+    # 改造为 ref_rel
+    def insert_ref_rel(self, item) -> dict:
         with create_conn() as conn:
             with conn.cursor() as cursor:
-                select_sql = '''show tables like "Filename"'''
+                select_sql = '''show tables like "Ref_Rel"'''
                 if not cursor.execute(select_sql):
-                    cursor.execute('''create table `Filename`(
+                    cursor.execute('''create table `Ref_Rel`(
                         _id int auto_increment primary key,
-                        filename varchar(255) unique ,
-                        dbcode varchar(255),
-                        dbname varchar(255),
-                        extra longtext comment "一般是 title 或者是被引时导出信息",
+                        Ref_Info_filename varchar(255),
+                        Item_filename varchar(255),
                         download_ts varchar(255)
                     )default charset=utf8;''')
                     conn.commit()
             with conn.cursor() as cursor:
-                distinct_sql = '''select filename from `Filename` where filename=%s or extra=%s'''
-                if cursor.execute(distinct_sql, (item['filename'], item['extra'])):
-                    return item
+                dinctinct_sql = '''select `Ref_Info_filename`,`Item_filename` from `Ref_Rel` where `Ref_Info_filename`=%s and `Item_filename`=%s'''
+                if cursor.execute(dinctinct_sql, (item['Ref_Info_filename'], item['Item_filename'])):
+                    return
             with conn.cursor() as cursor:
-                insert_sql = '''insert into `Filename` (`filename`,`dbcode`,`dbname`,`extra`,`download_ts`) values (%s,%s,%s,%s,%s)'''
-                cursor.execute(insert_sql,
-                               (item['filename'], item['dbcode'], item['dbname'], item['extra'], item['download_ts']))
-                conn.commit()
-
-    def insert_ref(self, item) -> dict:
-        with create_conn() as conn:
-            with conn.cursor() as cursor:
-                select_sql = '''show tables like "Ref"'''
-                if not cursor.execute(select_sql):
-                    cursor.execute('''create table `Ref`(
-                        _id int auto_increment primary key,
-                        citing_id varchar(255),
-                        citing_filename varchar(255),
-                        cited_id varchar(255),
-                        cited_filename varchar(255),
-                        download_ts varchar(255)
-                    )default charset=utf8;''')
+                insert_sql = '''insert into `Ref_Rel` (`Ref_Info_filename`,`Item_filename`,`download_ts`) values (%s,%s,%s);'''
+                if cursor.execute(insert_sql, (
+                        item['Ref_Info_filename'],
+                        item['Item_filename'], item['download_ts']
+                )):
                     conn.commit()
-            with conn.cursor() as cursor:
-                select_sql = '''select _id from `Filename` where `filename`=%s'''
-                cursor.execute(select_sql, item['citing_filename'])
-                conn.commit()
-                ret = cursor.fetchall()
-                citing_id = ret[0][0]
-                select_sql = '''select _id from `Filename` where `filename`=%s'''
-                cursor.execute(select_sql, item['cited_filename'])
-                conn.commit()
-                ret = cursor.fetchall()
-                cited_id = ret[0][0]
-            with conn.cursor() as cursor:
-                dinctinct_sql = '''select `citing_filename`,`cited_filename` from `Ref` where `citing_filename`=%s and `cited_filename`=%s'''
-                if cursor.execute(dinctinct_sql, (item['citing_filename'], item['cited_filename'])):
                     return item
-            with conn.cursor() as cursor:
 
-                insert_sql = '''insert into `Ref` (`citing_id`,`citing_filename`,`cited_id`,`cited_filename`,`download_ts`) values(%s,%s,%s,%s,%s);'''
-                cursor.execute(insert_sql, (
-                    citing_id, item['citing_filename'], cited_id, item['cited_filename'], item['download_ts']))
-                conn.commit()
-
+    # 给没有id的单独哈希
     def insert_author(self, item) -> dict:
         with create_conn() as conn:
             with conn.cursor() as cursor:
@@ -142,6 +113,7 @@ class CnkiSpdPipeline(object):
                     conn.rollback()
                     conn.commit()
 
+    # 给没有id的单独哈希
     def insert_orgn(self, item) -> dict:
         with create_conn() as conn:
             with conn.cursor() as cursor:
@@ -172,6 +144,7 @@ class CnkiSpdPipeline(object):
                     conn.rollback()
                     conn.commit()
 
+    # 给 NULL 的FUND单独一个哈希
     def insert_fund(self, item) -> dict:
         with create_conn() as conn:
             with conn.cursor() as cursor:
@@ -199,57 +172,61 @@ class CnkiSpdPipeline(object):
                     conn.rollback()
                     conn.commit()
 
+    # todo check item['whichtable']
     def insert_item(self, item):
         with create_conn() as conn:
             # 创建详情表
+            whichtable = item['whichtable']
             with conn.cursor() as cursor:
-                if not cursor.execute('show tables like "Item"'):
-                    sql = """create table `Item`(
+                if not cursor.execute(f'show tables like "{whichtable}"'):
+                    sql = f"""create table `{whichtable}`(
                         _id int auto_increment primary key,
-                        dbname varchar(255) not null,
+                        dbname varchar(255),
                         filename varchar(255) not null unique,
-                        pcode varchar(20),
-                        pageIdx int(11),
-                        pykm varchar(20),
+                        pcode varchar(255),
+                        pykm varchar(255),
                         year varchar(20),
                         issue varchar(20),
-                        dbcode varchar(20),
-                        download_timeout varchar(50),
+                        ISSN varchar (255),
+                        dbcode varchar(255),
                         title longtext,
-                        author longtext,
                         author_id longtext,
-                        orgn longtext,
                         orgn_id longtext,
-                        url longtext,
                         catalog_ABSTRACT longtext,
                         catalog_KEYWORD longtext,
                         catalog_ZCDOI varchar(255),
                         catalog_FUND longtext,
                         catalog_FUND_id longtext,
-                        catalog_ZTCLS varchar(255)  
+                        catalog_ZTCLS varchar(255),
+                        download_ts varchar(255)
                     ) default charset=utf8;"""
                     cursor.execute(sql)
                     conn.commit()
             # 插入详情表
             with conn.cursor() as cursor:
                 try:
-                    select_item_sql = f'''select `filename` from `Item` where `filename`=%s'''
+                    select_item_sql = f'''select `filename` from `{whichtable}` where `filename`=%s'''
                     if cursor.execute(select_item_sql, item['filename']):
-                        return item
-                    else:
-                        insert_item_sql = f'''insert into `Item` (`dbname`,`filename`,`pcode`,`pageIdx`,`pykm`,`year`,`issue`,`dbcode`,`download_timeout`,`title`,`author`,`author_id`,`orgn`,`orgn_id`,`url`,`catalog_ABSTRACT`,`catalog_KEYWORD`,`catalog_ZCDOI`,`catalog_FUND`,`catalog_FUND_id`,`catalog_ZTCLS`) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);'''
-
+                        return
+                    if item.get('easy_insert'):
+                        insert_item_sql = f'''insert into `{whichtable}` (`filename`,`title`,`author_id`,`orgn_id`,`year`) values (%s,%s,%s,%s,%s)'''
                         cursor.execute(insert_item_sql, (
-                            item['dbname'], item['filename'], item['pcode'], item['pageIdx'], item['pykm'],
-                            item['year'],
-                            item['issue'], item['dbcode'], item['download_timeout'], item['title'], item['author'],
-                            item['author_id'],
-                            item['orgn'], item['orgn_id'], item['url'], item['catalog_ABSTRACT'],
-                            item['catalog_KEYWORD'],
-                            item['catalog_ZCDOI'], item['catalog_FUND'], item['catalog_FUND_id'], item['catalog_ZTCLS']
+                            item['filename'], item['title'], item['author_id'], item['orgn_id'], item['year']
                         ))
                         conn.commit()
+                        return item
+                    else:
+                        insert_item_sql = f'''insert into `{whichtable}` (`dbname`,`filename`,`pcode`,`pykm`,`year`,`issue`,`ISSN`,`dbcode`,`title`,`author_id`,`orgn_id`,`catalog_ABSTRACT`,`catalog_KEYWORD`,`catalog_ZCDOI`,`catalog_FUND`,`catalog_FUND_id`,`catalog_ZTCLS`,`download_ts`) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);'''
+
+                        cursor.execute(insert_item_sql, (
+                            item['dbname'], item['filename'], item['pcode'], item['pykm'], item['year'],
+                            item['issue'], item['ISSN'], item['dbcode'], item['title'], item['author_id'],
+                            item['orgn_id'], item['catalog_ABSTRACT'], item['catalog_KEYWORD'],
+                            item['catalog_ZCDOI'], item['catalog_FUND'], item['catalog_FUND_id'],
+                            item['catalog_ZTCLS'], item['download_ts']
+                        ))
+                        conn.commit()
+                        return item
                 except Exception as e:
                     conn.rollback()
                     conn.commit()
-            return item

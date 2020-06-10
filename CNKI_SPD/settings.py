@@ -20,11 +20,11 @@ NEWSPIDER_MODULE = 'CNKI_SPD.spiders'
 
 # mongo_url = os.getenv('MONGO_URL', '127.0.0.1')
 redis_url = os.getenv('REDIS_URL', '127.0.0.1')
-# mysql_host = os.getenv('MYSQL_HOST', '127.0.0.1')
-mysql_host = os.getenv('MYSQL_HOST', '111.231.51.183')
+mysql_host = os.getenv('MYSQL_HOST', '127.0.0.1')
+# mysql_host = os.getenv('MYSQL_HOST', '111.231.51.183')
 mysql_user = os.getenv('MYSQL_USER', 'root')
-mysql_password = os.getenv('MYSQL_PASSWORD', 'qwer:1234')
-# mysql_password = os.getenv('MYSQL_PASSWORD', 'jh123456')
+# mysql_password = os.getenv('MYSQL_PASSWORD', 'qwer:1234')
+mysql_password = os.getenv('MYSQL_PASSWORD', 'jh123456')
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 # USER_AGENT = 'CNKI_SPD (+http://www.yourdomain.com)'
@@ -47,8 +47,6 @@ CONCURRENT_REQUESTS = 1
 
 # Disable cookies (enabled by default)
 # COOKIES_ENABLED = False
-
-SCHEDULER_DISK_QUEUE = 'scrapy.squeues.MarshalFifoDiskQueue'
 
 # Disable Telnet Console (enabled by default)
 TELNETCONSOLE_ENABLED = False
@@ -83,6 +81,8 @@ ITEM_PIPELINES = {
     'CNKI_SPD.pipelines.CnkiSpdPipeline': 300,
 }
 
+SCHEDULER_DISK_QUEUE = 'scrapy.squeues.PickleFifoDiskQueue'
+SCHEDULER_MEMORY_QUEUE = 'scrapy.squeues.FifoMemoryQueue'
 # REDIRECT_ENABLED = False
 
 # Enable and configure the AutoThrottle extension (disabled by default)
