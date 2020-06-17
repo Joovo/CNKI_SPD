@@ -50,14 +50,6 @@ class SampleSpider(Spider):
             for year in range(self.start_year, self.end_year):
                 for _issue in range(self.start_issue, self.end_issue):
                     issue = str(_issue).rjust(2, '0')
-                    # by default
-                    # journal_url = f'http://navi.cnki.net/knavi/JournalDetail?year={year}&issue={issue}&pykm={pykm}&pageIdx={pageIdx}&pcode={pcode}'
-                    # yield Request(headers=sample_headers,
-                    #               url=journal_url,
-                    #               callback=self.parse_journal_info,
-                    #               cb_kwargs={'pykm': pykm}
-                    #               )
-
                     url = f'http://navi.cnki.net/knavi/JournalDetail/GetArticleList?year={year}&issue={issue}&pykm={pykm}&pageIdx={pageIdx}&pcode={pcode}'
                     yield Request(
                         headers=sample_headers,
@@ -69,57 +61,6 @@ class SampleSpider(Spider):
                             }
                         }
                     )
-
-    def parse_journal_info(self, response, pykm=''):
-        selector = Selector(response)
-        # parse journal_info
-        title_1 = selector.xpath('//h3[contains(@class,"titbox")]/text()').get()
-        title_2 = selector.xpath('//h3[contains(@class,"titbox")]/p/text()').get()
-        journalType = selector.xpath('//p[@class="journalType"]//text()').get()
-        if not journalType:
-            journalType = ''
-        core_journal = 'yes' if '核心期刊' in journalType else 'no'
-        CSSCI = 'yes' if 'CSSCI' in journalType else 'no'
-        sponser = selector.xpath('//ul[@id="JournalBaseInfo"]//p[starts-with(text(),"主办单位")]/span/text()').get()
-        pub_periodicity = selector.xpath('//ul[@id="JournalBaseInfo"]//p[starts-with(text(),"出版周期")]/span/text()').get()
-        ISSN = selector.xpath('//ul[@id="JournalBaseInfo"]//p[starts-with(text(),"ISSN")]/span/text()').get()
-        CN = selector.xpath('//ul[@id="JournalBaseInfo"]//p[starts-with(text(),"CN")]/span/text()').get()
-        pub_place = selector.xpath('//ul[@id="JournalBaseInfo"]//p[starts-with(text(),"出版地")]/span/text()').get()
-        language = selector.xpath('//ul[@id="JournalBaseInfo"]//p[starts-with(text(),"语种")]/span/text()').get()
-        book_size = selector.xpath('//ul[@id="JournalBaseInfo"]//p[starts-with(text(),"开本")]/span/text()').get()
-        post_release_code = selector.xpath(
-            '//ul[@id="JournalBaseInfo"]//p[starts-with(text(),"邮发代号")]/span/text()').get()
-        start_year_of_publication = selector.xpath(
-            '//ul[@id="JournalBaseInfo"]//p[starts-with(text(),"创刊时间")]/span/text()').get()
-        series_name = selector.xpath('//ul[@id="publishInfo"]//p[starts-with(text(),"专辑名称")]/span/text()').get()
-        subject_name = selector.xpath('//ul[@id="publishInfo"]//p[starts-with(text(),"专题名称")]/span/text()').get()
-        the_number_of_published_articles = selector.xpath(
-            '//ul[@id="publishInfo"]//p[starts-with(text(),"出版文献量")]/span/text()').get()
-        downloads = selector.xpath('//ul[@id="publishInfo"]//p[starts-with(text(),"总下载次数")]/span/text()').get()
-        cites = selector.xpath('//ul[@id="publishInfo"]//p[starts-with(text(),"总被引次数")]/span/text()').get()
-        item = {}
-        item['title_1'] = title_1
-        item['title_2'] = title_2
-        item['pykm'] = pykm
-        item['core_journal'] = core_journal
-        item['CSSCI'] = CSSCI
-        item['sponsor'] = sponser
-        item['pub_periodicity'] = pub_periodicity
-        item['ISSN'] = ISSN
-        item['CN'] = CN
-        item['pub_place'] = pub_place
-        item['language'] = language
-        item['book_size'] = book_size
-        item['post_release_code'] = post_release_code
-        item['start_year_of_publication'] = start_year_of_publication
-        item['series_name'] = series_name
-        item['subject_name'] = subject_name
-        item['the_number_of_published_articles'] = the_number_of_published_articles
-        item['downloads'] = downloads
-        item['cites'] = cites
-        item['whichtable'] = 'Journal_Info'
-        self.check_item(item)
-        yield item
 
     def get_paper_params(self, response):
         meta = response.meta
