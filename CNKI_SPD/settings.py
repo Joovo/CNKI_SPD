@@ -21,10 +21,9 @@ NEWSPIDER_MODULE = 'CNKI_SPD.spiders'
 # mongo_url = os.getenv('MONGO_URL', '127.0.0.1')
 redis_url = os.getenv('REDIS_URL', '127.0.0.1')
 mysql_host = os.getenv('MYSQL_HOST', '127.0.0.1')
-# mysql_host = os.getenv('MYSQL_HOST', '111.231.51.183')
 mysql_user = os.getenv('MYSQL_USER', 'root')
-# mysql_password = os.getenv('MYSQL_PASSWORD', 'qwer:1234')
-mysql_password = os.getenv('MYSQL_PASSWORD', 'jh123456')
+mysql_password = os.getenv('MYSQL_PASSWORD', 'qwer:1234')
+# mysql_password = os.getenv('MYSQL_PASSWORD', 'jh123456')
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 # USER_AGENT = 'CNKI_SPD (+http://www.yourdomain.com)'
@@ -32,8 +31,10 @@ mysql_password = os.getenv('MYSQL_PASSWORD', 'jh123456')
 # Obey robots.txt rules
 ROBOTSTXT_OBEY = False
 
+# must >= cnki's max times:21
 REDIRECT_MAX_TIMES = 25
 
+# for safety
 # Configure maximum concurrent requests performed by Scrapy (default: 16)
 CONCURRENT_REQUESTS = 1
 
